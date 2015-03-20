@@ -11,6 +11,10 @@ PROXY_OBJ := webproxy.o steque.o
 
 all: webproxy
 
+simplecached: simplecached_dev.c shm_channel.c shm_channel.h
+	gcc simplecached_dev.c -o $@ -lpthread -g 
+
+
 webproxy: $(PROXY_OBJ) handle_with_cache.o handle_with_curl.o shm_channel.o gfserver.o 
 	$(CC) -o $@ $(CFLAGS) $(CURL_CFLAGS) $^ $(LDFLAGS) $(CURL_LIBS)
 
@@ -18,5 +22,5 @@ webproxy: $(PROXY_OBJ) handle_with_cache.o handle_with_curl.o shm_channel.o gfse
 
 clean:
 	mv gfserver.o gfserver.tmpo 
-	rm -rf *.o webproxy
+	rm -rf *.o webproxy simplecached_dev
 	mv gfserver.tmpo gfserver.o  	
