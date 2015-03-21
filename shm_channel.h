@@ -24,7 +24,7 @@ void init_thread_queue(thread_queue_type* queue);
 
 //empty
 int queue_worker_is_empty(thread_queue_type* queue);
-int is_empty(thread_queue_type* queue);
+int q_is_empty(thread_queue_type* queue);
 
 //enqueue
 void enqueue(void* data, thread_queue_type* queue);

@@ -5,11 +5,16 @@
 #include <string.h>
 #include <getopt.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 
 #include "shm_channel.h"
 #include "simplecache.h"
 
 #define MAX_CACHE_REQUEST_LEN 256
+#define ADDRESS     "message_socket" 
 
 
 
@@ -52,11 +57,18 @@ void test_worker_queue(void* queue){
 }
 
 int main(int argc, char **argv) {
+	
 	int nthreads = 1;
 	int i;
 	char *cachedir = "locals.txt";
 	char option_char;
 	pthread_t thread;
+	char c;
+	FILE *fp;
+	int fromlen;
+	int mess_socket, ns, len;
+	struct sockaddr_un saun, fsaun;
+	char message [MAX_CACHE_REQUEST_LEN];
 
       
 	while ((option_char = getopt_long(argc, argv, "t:c:h", gLongOptions, NULL)) != -1) {
@@ -87,29 +99,81 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 	
+	
+	
+	// IPC socket INIT
+	
+	
+
+	/*
+	* Get a socket to work with.  This socket will
+	* be in the UNIX domain, and will be a
+	* stream socket.
+	*/
+	if ((mess_socket = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+	    perror("server: socket");
+	    exit(1);
+	}
+	
+	saun.sun_family = AF_UNIX;
+	strcpy(saun.sun_path, ADDRESS);
+	
+	unlink(ADDRESS);
+	len = sizeof(saun.sun_family) + strlen(saun.sun_path);
+
+	if (bind(mess_socket, &saun, len) < 0) {
+	    perror("server: bind");
+	    exit(1);
+	}
+	
+	// IPC socket INIT END
+	
+	
+	
 	printf("in main\n");
 	//Initializing pool of workers
 	
 	thread_queue_type worker_queue;
 	init_thread_queue(&worker_queue);
-	
-	
-	
-	for (i=0; i<20; i++){
-	  pthread_create(&thread, NULL, (void*) &test_worker_queue, (void*) &worker_queue);
-	  
+	for (i=0; i<nthreads; i++){
+	    pthread_create(&thread, NULL, (void*) &test_worker_queue, (void*) &worker_queue);
 	}
 	
+	//Initializing pool of workers END
 	
 	
-	for(i=0; i<10; i++){
-	  int* num = malloc(sizeof(int));
-	  *num = i;
-	  enqueue(num, &worker_queue);
+	
+	int request_id = 1;
+	while(1){
+	  printf("Listening socket\n");
+	  if (listen(mess_socket, 5) < 0) {
+	    perror("server: listen");
+	    exit(1);
+	  }
+
+	    /*
+	    * Accept connections.  When we accept one, ns
+	    * will be connected to the client.  fsaun will
+	    * contain the address of the client.
+	    */
+	  if ((ns = accept(mess_socket, &fsaun, &fromlen)) < 0) {
+	    perror("server: accept");
+	    exit(1);
+	  }
+	    
+	  fp = fdopen(ns, "r");
+	    
+	  while ((c = fgetc(fp)) != EOF) {
+		putchar(c);
+
+		if (c == '\n')
+		
+		    break;
+	  }
+	  printf("\nRequest %d completed!\n\n", request_id);
+	  request_id ++;
 	  
 	}
-	
-	while(1){}
 	
 	return;
 	

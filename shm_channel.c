@@ -34,7 +34,7 @@ int queue_worker_is_empty(thread_queue_type* queue){
 }
 
 
-int is_empty(thread_queue_type* queue) {
+int q_is_empty(thread_queue_type* queue) {
 	int empty = 0;
 	pthread_mutex_lock(&queue->mutex);
 	empty = queue_worker_is_empty(queue);
