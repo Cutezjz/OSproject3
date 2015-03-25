@@ -53,9 +53,10 @@ int simplecache_init(char *filename){
 	}
 
 	fclose(filelist);
+	int i;
 
 	qsort(items, nitems, sizeof(item_t), _itemcmp);
-
+    
 	return EXIT_SUCCESS;
 }
 

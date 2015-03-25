@@ -6,12 +6,13 @@
 #include <errno.h>
 
 #include "gfserver.h"
+#include "shm_channel.h"
 
 //Replace with an implementation of handle_with_curl and any other
 //functions you may need.
 
 
-
+#if 0
 
 typedef struct node{
   size_t nodeSize;
@@ -35,13 +36,13 @@ in_memory_file_type* data_list_init(void){
   return new_list; 
 }
 
-int is_empty(in_memory_file_type* list){
+int data_list_is_empty(in_memory_file_type* list){
   int result = (!(list->head));
   return result;
 }
 
 
-void add_node(in_memory_file_type* list, size_t size, void* data){
+void data_list_add_node(in_memory_file_type* list, size_t size, void* data){
     node_type* newNode = malloc(sizeof(node_type));
     newNode->data = malloc(size);
     memcpy(newNode->data, data, size);
@@ -65,7 +66,7 @@ void add_node(in_memory_file_type* list, size_t size, void* data){
 
 
 void data_list_clean(in_memory_file_type *list){
-     if(is_empty(list)){
+     if(data_list_is_empty(list)){
        free(list);
        return;
     }  else {
@@ -85,16 +86,16 @@ void data_list_clean(in_memory_file_type *list){
 }
 
 
-size_t write_data(void *ptr, size_t size, size_t nmemb, void *list) {
+size_t data_list_write_data(void *ptr, size_t size, size_t nmemb, void *list) {
     //creating new node, adding data
     size_t dataSize = size*nmemb;
-    add_node(list, dataSize, ptr);     
+    data_list_add_node(list, dataSize, ptr);     
     //updating list
     return dataSize;
 }
 
 
-
+#endif
 
 
 
@@ -126,7 +127,7 @@ ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg){
         
         curl_easy_setopt(curl, CURLOPT_URL, buffer);
 	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, data_list_write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, dataList);
 //      curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 1L);
 	res = curl_easy_perform(curl);

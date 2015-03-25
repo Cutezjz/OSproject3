@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
+
 #include "shm_channel.h"
 
 
@@ -16,6 +17,7 @@
 
 
 //struct thread_queue_node_type;
+
 
 
 
@@ -105,3 +107,72 @@ void* dequeue_non_blocking(thread_queue_type* queue) {
 		return result;
 	
 }
+
+
+
+in_memory_file_type* data_list_init(void){
+  in_memory_file_type *new_list = malloc(sizeof(in_memory_file_type));
+  new_list->totalSize = 0;
+  new_list->head = NULL;
+  new_list->tail = NULL;
+  return new_list; 
+}
+
+int data_list_is_empty(in_memory_file_type* list){
+  int result = (!(list->head));
+  return result;
+}
+
+
+void data_list_add_node(in_memory_file_type* list, size_t size, void* data){
+    node_type* newNode = malloc(sizeof(node_type));
+    newNode->data = malloc(size);
+    memcpy(newNode->data, data, size);
+    newNode->nodeSize = size;
+    //updating
+    newNode->next = NULL;
+    if (!(list->head)){
+      list->head = newNode;
+      list->tail = newNode;
+      list->totalSize += size;
+      list->num_nodes ++;
+    } else{
+    list->tail->next = newNode;
+    list->tail = newNode;
+    list->totalSize += size;
+    list->num_nodes ++;
+    }
+    return;
+}
+
+
+
+void data_list_clean(in_memory_file_type *list){
+     if(data_list_is_empty(list)){
+       free(list);
+       return;
+    }  else {
+    while(1){
+	node_type* temp = list->head;
+	free(temp->data);
+	if (!(temp->next)){
+	  free(temp);
+	  break;
+	}
+	list->head = list->head->next;
+	free(temp);
+    }  
+    free(list);
+    return;  
+    }
+}
+
+
+size_t data_list_write_data(void *ptr, size_t size, size_t nmemb, void *list) {
+    //creating new node, adding data
+    size_t dataSize = size*nmemb;
+    data_list_add_node(list, dataSize, ptr);     
+    //updating list
+    return dataSize;
+}
+
