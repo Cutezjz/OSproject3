@@ -33,7 +33,7 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg){
     //path - filename
     //arg - worker_data
     char* sh_mem_segment;
-    printf("Thread entered\n");
+    printf("\nThread entered\n");
     char buffer [256];
     data_type* worker_data = arg;
     request_type request;
@@ -42,7 +42,7 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg){
     
     
     request.key = *key;
-    request.size = (int)worker_data->segment_size;
+    request.size =*worker_data->segment_size;
     
     
     strcpy(buffer, path);
@@ -58,7 +58,7 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg){
    
     printf("Attaching to shared memory...\n");
     
-    if((shmid = shmget(*key, (size_t)worker_data->segment_size, 0666))< 0){
+    if((shmid = shmget(*key, (size_t)*worker_data->segment_size, 0666))< 0){
      perror("shmget");
      exit(1);
     }
@@ -114,7 +114,8 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg){
 	printf("Size of request is %d\n", bytes_to_write);
 	int bytes_written = 0;
 	while(bytes_written<bytes_to_write){
-		bytes_written += write(socketfd, &request, sizeof(request));
+		if(bytes_written += write(socketfd, &request, sizeof(request))<0)
+			perror("writing error");
 	}
     printf("Message sent. Should have sent %d bytes. Have sent %d bytes\n", bytes_to_write, bytes_written);
 	char* mBuffer = malloc(BUFFER_SIZE); //buffer to read response

@@ -17,14 +17,17 @@
 #define ADDRESS     "message_socket" 
 #define BUFFER_SIZE 4096
 
-
-
+shutdown_type shutdown_struct;
 
 static void _sig_handler(int signo)
 {
 	if (signo == SIGINT || signo == SIGTERM){
 		/* Unlink IPC mechanisms here*/
-		exit(signo);
+		pthread_mutex_lock(&shutdown_struct.sd_mutiex);
+		shutdown_struct.flag = 1;
+		pthread_cond_signal(&shutdown_struct.sd_cv);
+		pthread_mutex_unlock(&shutdown_struct.sd_mutiex);
+		return;
 	}
 }
 
@@ -54,10 +57,12 @@ void test_worker_queue(void* queue){
 	
 	while(1){
 		int *client = dequeue_blocking(queue);
-		if (*client == NULL){
-			free(client);
-			return;
+		if(!(strcmp("kill", (char*) client))){
+//			printf("pill received, returning\n");
+				return;
 		}
+		
+		
 		int cli_sock = *client;
 		request_type* request = malloc(sizeof(request_type));
 		int bytes_so_far = 0;
@@ -67,11 +72,11 @@ void test_worker_queue(void* queue){
 		char* response_codes = "fnwl";
 		FILE* r_file;
 		
-//		printf("Ready to read data....\n");
+		printf("Ready to read data....\n");
 		bytes_so_far = 0;
 		while(bytes_so_far<sizeof(request_type)){
 			bytes_so_far += read(cli_sock, request, sizeof(request_type));
-//			printf("Read so far %d bytes\n", bytes_so_far);
+			printf("Read so far %d bytes\n", bytes_so_far);
 		}
 		printf("received request: filename: %s, shared memory key: %d, segment size %ld\n"
 		, request->filename
@@ -165,18 +170,81 @@ void test_worker_queue(void* queue){
 	return;   
 }
 
+
+
+void acceptor_thread(void* acceptor_data){
+	acceptor_data_type *data = acceptor_data;
+	
+	int fromlen;
+	int sockfd, len;
+	struct sockaddr_un serv_addr, client_addr;
+	
+	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+	    perror("server: socket");
+	    exit(1);
+	}
+	
+	serv_addr.sun_family = AF_UNIX;
+	strcpy(serv_addr.sun_path, ADDRESS);
+	
+	unlink(ADDRESS);
+	len = sizeof(serv_addr.sun_family) + strlen(serv_addr.sun_path);
+
+	if (bind(sockfd, (struct sockaddr *)&serv_addr, len) < 0) {
+	    perror("server: bind");
+	    exit(1);
+	}
+	
+	if (listen(sockfd, 5) < 0) {
+	    perror("server: listen");
+	    exit(1);
+	  }
+	
+	while(1){
+		printf("Accepting connetcions\n");
+		
+		int newsockfd;
+		
+	
+	    /*
+	    * Accept connections.  When we accept one, ns
+	    * will be connected to the client.  fsaun will
+	    * contain the address of the client.
+	    */
+	  if ((newsockfd = accept(sockfd, (struct sockaddr*)&client_addr, &fromlen)) < 0) {
+	    perror("server: accept");
+	    
+	  }
+	  printf("Accepthed\n");
+	  if (shutdown_struct.flag){
+		  printf("Acceptor exiting\n");
+		  close(sockfd);
+		  return;
+		  
+	  }
+	  	  
+	  int * client = malloc(sizeof(int));
+	   *client = newsockfd;
+	  enqueue(client, data->queue);
+	  printf("Enqueued\n");
+	}
+}
+
 int main(int argc, char **argv) {
 	
-	int nthreads = 1;
+	
 	int i;
+	pthread_t * threadsLaunched;
+	thread_queue_type worker_queue;
+	
+	int nthreads = 1;
 	char *cachedir = "locals.txt";
 	char option_char;
 	pthread_t thread;
 	char c;
 	FILE *fp;
-	int fromlen;
-	int sockfd, newsockfd, len;
-	struct sockaddr_un serv_addr, client_addr;
+	int acceptor_len;
+	struct sockaddr_un acceptor, kill_addr;
 	char message [MAX_CACHE_REQUEST_LEN];
 
       
@@ -208,93 +276,127 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 	
+	//global shutdown init
+	pthread_mutex_init(&shutdown_struct.sd_mutiex, NULL);
+	pthread_cond_init(&shutdown_struct.sd_cv, NULL);
+	shutdown_struct.flag = 0;
 	
+	
+	acceptor.sun_family = AF_UNIX;
+	strcpy(acceptor.sun_path, ADDRESS);
+	
+	unlink(ADDRESS);
+	acceptor_len = sizeof(acceptor.sun_family) + strlen(acceptor.sun_path);
 	
 	// IPC socket INIT
 	
-	/*
-	* Get a socket to work with.  This socket will
-	* be in the UNIX domain, and will be a
-	* stream socket.
-	*/
-	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-	    perror("server: socket");
-	    exit(1);
-	}
-	
-	serv_addr.sun_family = AF_UNIX;
-	strcpy(serv_addr.sun_path, ADDRESS);
-	
-	unlink(ADDRESS);
-	len = sizeof(serv_addr.sun_family) + strlen(serv_addr.sun_path);
 
-	if (bind(sockfd, (struct sockaddr *)&serv_addr, len) < 0) {
-	    perror("server: bind");
-	    exit(1);
-	}
 	
-	// IPC socket INIT END
-	
-	
-	
-	printf("in main\n");
-	//Initializing pool of workers
-	
-	thread_queue_type worker_queue;
-	init_thread_queue(&worker_queue);
-	for (i=0; i<nthreads; i++){
-	    pthread_create(&thread, NULL, (void*) &test_worker_queue, (void*) &worker_queue);
-	}
-	//Initializing pool of workers END
+
 	
 	//Initializing cache
 	int cache;
 	cache = simplecache_init(cachedir);
 	
-	printf("Cache is %d\n", cache);
+//	printf("Cache is %d\n", cache);
+	
+	//Initializing pool of workers
+	
+	threadsLaunched = malloc(sizeof(pthread_t) * (nthreads+2));
+	
+	init_thread_queue(&worker_queue);
+	for (i=0; i<nthreads; i++){
+	    pthread_create(&thread, NULL, (void*) &test_worker_queue, (void*) &worker_queue);
+		threadsLaunched[i] = thread;
+	}
+	threadsLaunched[nthreads+1] = NULL;
+	//Initializing pool of workers END
 	
 	
 	
 	
+//	 printf("Listening socket\n");
+	  
 	
 	
+	acceptor_data_type* acceptorData = malloc(sizeof(acceptor_data_type));
+	acceptorData->queue = &worker_queue;
 	
-	 printf("Listening socket\n");
-	  if (listen(sockfd, 5) < 0) {
-	    perror("server: listen");
-	    exit(1);
-	  }
 	
+//	printf("Acceptor data: socketfd %d, client address %d, len %d\n", acceptorData->socketfd, acceptorData->client_addr, acceptorData->fromlen);
+	
+	pthread_create(&thread, NULL, (void*) &acceptor_thread, (void*) acceptorData);
+	threadsLaunched[nthreads] = thread;
+	
+	
+	pthread_mutex_lock(&shutdown_struct.sd_mutiex);
 	while(1){
-		printf("Accepting connetcions\n");
-		int * client = malloc(sizeof(int));
-	    /*
-	    * Accept connections.  When we accept one, ns
-	    * will be connected to the client.  fsaun will
-	    * contain the address of the client.
-	    */
-	  if ((newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &fromlen)) < 0) {
-	    perror("server: accept");
-	    exit(1);
-	  }
-	  *client = newsockfd;
-	  enqueue(client, &worker_queue);
-	  
-	  
+	pthread_cond_wait(&shutdown_struct.sd_cv, &shutdown_struct.sd_mutiex); 
+	if (!(shutdown_struct.flag))
+		continue;
+	break;
+	}
+	pthread_mutex_unlock(&shutdown_struct.sd_mutiex);
+	
+//	printf("closing socket\n");
+#if 0
+	if(	connect(sockfd, (struct sockaddr*)&client_addr, fromlen)<0){
+		perror("connect socket error");
 	}
 	
-	return;
-	
-	
-	
-#if 0 
-	
-	
-	/* Initializing the cache */
-	simplecache_init(cachedir);
-
-	//Your code here...
+	if (close(acceptorData->socketfd)<0){
+		perror("closing socket");
+	}
 #endif
+	for (i=0; i<nthreads+3; i++){
+		char* poison_pill = "kill";
+		enqueue(poison_pill, &worker_queue);
+	}
+	printf("poison sent, killing acceptor\n");
+	
+	int kill_fd, kill_len, sock_return;
+	
+		
+	if ((kill_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+	    perror("server: socket");
+	    exit(1);
+	}
+	
+	kill_addr.sun_family = AF_UNIX;
+	strcpy(kill_addr.sun_path, "kill_socket");
+	
+	unlink("kill_socket");
+	kill_len = sizeof(kill_addr.sun_family) + strlen(kill_addr.sun_path);
+
+		
+	
+	if (sock_return = connect(kill_fd, (struct sockaddr*)&acceptor, acceptor_len)<0){
+			perror("Kill acceptor, connection error");
+	}
+	
+	
+	
+	close(kill_fd);
+	
+	
+	
+	while(*threadsLaunched)	  {
+		pthread_join(*threadsLaunched, NULL);
+		++threadsLaunched;
+//		printf("thread joined\n");
+	}
+	printf("Joined all threads\n");
+	
+	simplecache_destroy();
+	destroy_thread_queue(&worker_queue);
+	
+	printf("Looks like everybody is out. Exiting....\n");	
+//	sleep(2);
+	pthread_mutex_destroy(&shutdown_struct.sd_mutiex);
+	pthread_cond_destroy(&shutdown_struct.sd_cv);
+	free(acceptorData);
+	return 0;
+	
 }
 
 

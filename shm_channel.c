@@ -44,6 +44,18 @@ int q_is_empty(thread_queue_type* queue) {
 	return empty;
 }
 
+
+void destroy_thread_queue(thread_queue_type* queue){
+	while (!(q_is_empty(queue))){
+		void* destroy = dequeue_blocking(queue);
+	//	free(destroy);
+	}
+	pthread_mutex_destroy(&queue->mutex);
+	pthread_cond_destroy(&queue->c);
+	return;
+}
+
+
 void enqueue(void* data, thread_queue_type* queue) {
 	thread_queue_node_type* new_element = malloc(sizeof(thread_queue_node_type));
 	//printf("entering enqueue\n");

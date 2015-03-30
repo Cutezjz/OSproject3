@@ -11,7 +11,8 @@
 typedef struct s_request {
    key_t key; //shm key
    long size; // segment size
-   char filename [256]; }request_type;
+   char filename [256]; 
+}request_type;
    
 
   
@@ -47,6 +48,10 @@ void* deq_worker(thread_queue_type* queue);
 void* dequeue_blocking(thread_queue_type* queue);
 void* dequeue_non_blocking(thread_queue_type* queue);
 
+//destroy
+void destroy_thread_queue(thread_queue_type* queue);
+
+
 typedef struct data {
     thread_queue_type* shm_queue; 
     long* segment_size;
@@ -56,6 +61,19 @@ typedef struct block {
    int size;
    char data;
 }block_type;
+
+typedef struct s_shutdown_notify{
+	pthread_mutex_t sd_mutiex;
+	pthread_cond_t sd_cv;
+	int flag;	
+}shutdown_type;
+
+typedef struct acceptor_data{
+		int socketfd;
+		struct sockaddr_un* client_addr;
+		int *fromlen;
+		thread_queue_type * queue;
+	}acceptor_data_type;
 
 typedef struct node{
   size_t nodeSize;

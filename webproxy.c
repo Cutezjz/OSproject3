@@ -38,11 +38,24 @@ static struct option gLongOptions[] = {
 extern ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg);
 
 static gfserver_t gfs;
+static thread_queue_type shm_queue;
+long *size;
+
 
 static void _sig_handler(int signo){
   if (signo == SIGINT || signo == SIGTERM){
-    gfserver_stop(&gfs);
-    exit(signo);
+    
+	while(!(q_is_empty(&shm_queue))){
+		int shmid;
+		key_t* destroy = dequeue_blocking(&shm_queue);
+		shmid = shmget(*destroy, *size, 0666);
+		shmctl(shmid, IPC_RMID, 0);
+		free(destroy);
+//		printf("segment free\n");
+	}
+	gfserver_stop(&gfs);
+	printf("Segments destroyed, server stopped, exiting...\n");
+	exit(signo);
   }
 }
 
@@ -57,8 +70,9 @@ int main(int argc, char **argv) {
   unsigned short nworkerthreads = 1;
   int num_segments = 10;
   long segment_size = 8192;
+  size = &segment_size;
   int shmid;
-  thread_queue_type shm_queue;
+  
   init_thread_queue(&shm_queue);
   
   char* server = "http://s3.amazonaws.com/content.udacity-data.com";
@@ -111,7 +125,7 @@ int main(int argc, char **argv) {
   for (i=0; i<num_segments; i++){
     key_t* key = malloc(sizeof(key_t));
     *key = 5000+i;
-    printf("Creating segment, key is %d\n", *key);  
+//  printf("Creating segment, key is %d\n", *key);  
     if ((shmid = shmget(*key, segment_size, IPC_CREAT | 0666)) < 0) {
       perror("shmget");
       exit(1);
@@ -122,7 +136,10 @@ int main(int argc, char **argv) {
   }
   
   worker_data->shm_queue = &shm_queue;
-  worker_data->segment_size = (long)segment_size;
+  worker_data->segment_size = &segment_size;
+  
+  
+ 
   
 
   /*Initializing server*/
